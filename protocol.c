@@ -17,8 +17,8 @@ static time_t epoch; /* epoch timestamp (be same for Station A & B) */
 
 #define getopt_long getopt_int
 #define stricmp _stricmp
-int xuanxuan = 666;
 int xuanxuan = 250;
+int xuanxuan = 666;
 static void socket_init(void)
 {
     WORD wVersionRequested;
