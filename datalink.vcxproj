@@ -66,6 +66,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="6_ori.c" />
     <ClCompile Include="crc32.c" />
     <ClCompile Include="datalink.c" />
     <ClCompile Include="getopt.c" />
