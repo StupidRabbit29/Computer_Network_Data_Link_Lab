@@ -1,19 +1,43 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "protocol.h"
+#include "datalink.h"
+
 #define MAX_SEQ 7				// should be 2^n-1
 #define NR_BUFS((MAX_SEQ+1)/2)	// size of sliding window
 /*
 In this protocol, we have dropped the assumption that
 the network layer always has an infinite supply of packets to send.
 */
+struct FRAME 
+{
+	unsigned char kind; /* FRAME_DATA */
+	unsigned char ack;
+	unsigned char seq;
+	unsigned char data[PKT_LEN];
+	unsigned int  padding;
+};
+
+typedef struct FRAME frame;
 typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
-#include "protocol.h"
 boolean no_nak = true;			// no nak has been sent yet
-seq_nr oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator
+int oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator****
 
 static boolean between(seq_nr a, seq_nr b, seq_nr c)
 {
 	// same as protocol5, but shorter and more obscure
 	return ((a <= b) && (b < c)) || ((c < a) && (a <= b)) || ((b < c) && (c < a));
 }
+
+static void send_data_frame(void)
+{
+	frame s;
+
+	s.kind = FRAME_DATA;
+
+}
+
 static void send_frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, packet buffer[])
 {
 	// construct and send a data, ack or nak frame
@@ -22,7 +46,7 @@ static void send_frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, pa
 	s.kind = fk;				// kind == data, ack, nak
 	if (fk == data)
 		s.info = buffer[frame_nr % NR_BUFS];
-	s.seq_nr = frame_nr;		// only meaningful for data frames
+	s.seq = frame_nr;		// only meaningful for data frames
 	s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
 	if (fk == nak)				// one nak per frame
 		no_nak = false;
