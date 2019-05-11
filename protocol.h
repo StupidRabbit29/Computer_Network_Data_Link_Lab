@@ -1,4 +1,4 @@
-#ifndef __PROTOCOL_fr12hn_H__
+﻿#ifndef __PROTOCOL_fr12hn_H__
 
 #ifdef  __cplusplus
 extern "C" {
