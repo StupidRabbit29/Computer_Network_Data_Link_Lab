@@ -1,6 +1,6 @@
 ﻿#include <stdio.h>
 #include <string.h>
-
+#include <stdbool.h>
 #include "protocol.h"
 #include "datalink.h"
 
@@ -14,8 +14,7 @@ the network layer always has an infinite supply of packets to send.
 */
 //typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
 
-typedef enum { data=1, ack=2, nak=3 } frame_kind;
-
+typedef enum { data = 1, ack = 2, nak = 3 } frame_kind;
 
 #define inc(k) if (k < MAX_SEQ) k = k + 1; else k = 0;
 
@@ -30,14 +29,21 @@ struct FRAME
 };
 typedef struct FRAME frame;
 
-boolean no_nak = true;			// no nak has been sent yet
+bool no_nak = true;			// no nak has been sent yet
 int oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator****
 int phl_ready = 0;
 
-static boolean between(seq_nr a, seq_nr b, seq_nr c)
+static bool between(seq_nr a, seq_nr b, seq_nr c)
 {
 	// same as protocol5, but shorter and more obscure
 	return ((a <= b) && (b < c)) || ((c < a) && (a <= b)) || ((b < c) && (c < a));
+}
+
+static void put_frame(unsigned char *frame, int len)
+{
+	*(unsigned int *)(frame + len) = crc32(frame, len);
+	send_frame(frame, len + 4);
+	phl_ready = 0;
 }
 
 static void Send_Frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, packet buffer[])
@@ -87,7 +93,7 @@ int main(int argc, char **argv)
 	packet out_buf[NR_BUFS];			// (S)buffer for the outbound stream
 	packet in_buf[NR_BUFS];				// (R)buffer for the inbound stream
 	// Associated with each buffer is a bit (arrived) telling whether the buffer is full or empty
-	boolean arrived[NR_BUFS];			// (R)inbound bit map
+	bool arrived[NR_BUFS];			// (R)inbound bit map
 	seq_nr nbuffered;					// (S)how many output buffers currently used
 
 	disable_network_layer();				// initialize
@@ -114,7 +120,7 @@ int main(int argc, char **argv)
 			// When the network layer has a packet it wants to send, it can cayse a 'network_layer_ready' event to happen
 		case NETWORK_LAYER_READY:	// (S)accept, save, and transmit a new frame
 			nbuffered = nbuffered + 1;	// expand the window
-			get_packet(&out_buf[next_frame_to_send % NR_BUFS]);
+			get_packet(out_buf[next_frame_to_send % NR_BUFS].data);
 			Send_Frame(data, next_frame_to_send, frame_expected, out_buf);
 			inc(next_frame_to_send);
 			break;
@@ -161,7 +167,7 @@ int main(int argc, char **argv)
 					{
 						// pass frames and advance window
 						//to_network_layer(&in_buf[frame_expected % NR_BUFS]);
-						put_packet(&in_buf[frame_expected % NR_BUFS], len - 7);
+						put_packet(in_buf[frame_expected % NR_BUFS].data, len - 7);
 						no_nak = true;
 						arrived[frame_expected % NR_BUFS] = false;
 						inc(frame_expected);			// advance lower edge of reciever's window
