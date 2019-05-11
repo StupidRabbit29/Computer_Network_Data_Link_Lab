@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 	int len = 0;
 
 	protocol_init(argc, argv);
-	lprintf("Designed by Jiang Yanjun, build: " __DATE__"  "__TIME__"\n");
+	lprintf("Designed by 223, build: " __DATE__"  "__TIME__"\n");
 
 	while (true)
 	{
@@ -141,6 +141,8 @@ int main(int argc, char **argv)
 					
 			if (f.kind == FRAME_ACK)
 				dbg_frame("Recv ACK  %d\n", f.ack);
+			if (f.kind==FRAME_NAK)
+				dbg_frame("Recv NCK  %d\n", f.ack);
 
 			if (f.kind == FRAME_DATA)
 			{
@@ -163,7 +165,7 @@ int main(int argc, char **argv)
 					arrived[f.seq % NR_BUFS] = true;		// mark buffer as full
 					in_buf[f.seq % NR_BUFS] = f.data;		// insert data into buffer
 					
-					while (arrived[frame_expected % NR_BUFS] = true)
+					while (arrived[frame_expected % NR_BUFS] == true)
 					{
 						// pass frames and advance window
 						//to_network_layer(&in_buf[frame_expected % NR_BUFS]);
