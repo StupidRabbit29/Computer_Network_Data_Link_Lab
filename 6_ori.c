@@ -1,31 +1,38 @@
-﻿#define MAX_SEQ 15				// should be 2^n-1
-#define NR_BUFS ((MAX_SEQ+1)/2)	// size of sliding window
-/*
-In this protocol, we have dropped the assumption that
-the network layer always has an infinite supply of packets to send.
-*/
-//typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
-typedef enum { data, ack, nak } frame_kind;
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <string.h>
 
 #include "protocol.h"
 #include "datalink.h"
 
+#define MAX_SEQ 15				// should be 2^n-1
+#define NR_BUFS ((MAX_SEQ+1)/2)	// size of sliding window
+#define DATA_TIMER  1800
+#define ACK_TIMER 100
+/*
+In this protocol, we have dropped the assumption that
+the network layer always has an infinite supply of packets to send.
+*/
+//typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
+
+typedef enum { data=1, ack=2, nak=3 } frame_kind;
+
+
 #define inc(k) if (k < MAX_SEQ) k = k + 1; else k = 0;
 
+typedef struct { unsigned char data[PKT_LEN]; } packet;
 struct FRAME
 {
 	unsigned char kind; /* FRAME_DATA */
 	unsigned char ack;
 	unsigned char seq;
-	unsigned char data[PKT_LEN];
+	packet data;
 	unsigned int  padding;
 };
 typedef struct FRAME frame;
 
 boolean no_nak = true;			// no nak has been sent yet
 int oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator****
+int phl_ready = 0;
 
 static boolean between(seq_nr a, seq_nr b, seq_nr c)
 {
@@ -33,29 +40,38 @@ static boolean between(seq_nr a, seq_nr b, seq_nr c)
 	return ((a <= b) && (b < c)) || ((c < a) && (a <= b)) || ((b < c) && (c < a));
 }
 
-static void send_data_frame(void)
-{
-	frame s;
-
-	s.kind = FRAME_DATA;
-
-}
-
-static void send_frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, packet buffer[])
+static void Send_Frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, packet buffer[])
 {
 	// construct and send a data, ack or nak frame
 	frame s;					// scratch variable
 
 	s.kind = fk;				// kind == data, ack, nak
-	if (fk == data)
-		s.info = buffer[frame_nr % NR_BUFS];
-	s.seq = frame_nr;		// only meaningful for data frames
-	s.ack = (frame_expected + MAX_SEQ) % (MAX_SEQ + 1);
-	if (fk == nak)				// one nak per frame
+	if (fk == FRAME_DATA)
+	{
+		s.data = buffer[frame_nr % NR_BUFS];
+		s.seq = frame_nr;		// only meaningful for data frames
+		s.ack = (seq_nr)((frame_expected + MAX_SEQ) % (MAX_SEQ + 1));
+		dbg_frame("Send DATA %d %d, ID %d\n", s.seq, s.ack, *(short*)(s.data.data));
+		put_frame((unsigned char*)& s, 3 + PKT_LEN);
+		start_timer(frame_nr % NR_BUFS, DATA_TIMER);
+	}
+	if (fk == FRAME_NAK)			// one nak per frame
+	{
+		s.seq = frame_nr;		// only meaningful for data frames
+		s.ack = (seq_nr)((frame_expected + MAX_SEQ) % (MAX_SEQ + 1));
 		no_nak = false;
-	to_physcial_layer(&S);		// transmit the frame
-	if (fk == data)
-		start_timer(frame_nr % NR_BUFS);
+		dbg_frame("Send NAK  %d\n", s.ack);
+		put_frame((unsigned char*)& s, 2);
+	}
+	// to_physcial_layer(&s);		// transmit the frame
+	if (fk == FRAME_ACK)
+	{
+		s.seq = frame_nr;		// only meaningful for data frames
+		s.ack = (seq_nr)((frame_expected + MAX_SEQ) % (MAX_SEQ + 1));
+		dbg_frame("Send ACK  %d\n", s.ack);
+		put_frame((unsigned char*)& s, 2);
+	}
+
 	stop_ack_timer();			// no need for separate ack frame
 }
 
@@ -73,9 +89,8 @@ int main(int argc, char **argv)
 	// Associated with each buffer is a bit (arrived) telling whether the buffer is full or empty
 	boolean arrived[NR_BUFS];			// (R)inbound bit map
 	seq_nr nbuffered;					// (S)how many output buffers currently used
-	event_type event;
 
-	enable_network_layer();				// initialize
+	disable_network_layer();				// initialize
 	ack_expected = 0;					// (R)next ack expected in the inbound stream
 	next_frame_to_send = 0;				// (S)number of the next outgoing frame
 	frame_expected = 0;					// (R)
@@ -87,6 +102,9 @@ int main(int argc, char **argv)
 	int event, arg;
 	int len = 0;
 
+	protocol_init(argc, argv);
+	lprintf("Designed by Jiang Yanjun, build: " __DATE__"  "__TIME__"\n");
+
 	while (true)
 	{
 		event = wait_for_event(&arg);	// 5 possibilities: frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout
@@ -97,8 +115,12 @@ int main(int argc, char **argv)
 		case NETWORK_LAYER_READY:	// (S)accept, save, and transmit a new frame
 			nbuffered = nbuffered + 1;	// expand the window
 			get_packet(&out_buf[next_frame_to_send % NR_BUFS]);
-			send_frame(data, next_frame_to_send, frame_expected, out_buf);
+			Send_Frame(data, next_frame_to_send, frame_expected, out_buf);
 			inc(next_frame_to_send);
+			break;
+
+		case PHYSICAL_LAYER_READY:
+			phl_ready = 1;
 			break;
 
 		case FRAME_RECEIVED:			// (R)a data or control frame has arrived
@@ -107,32 +129,34 @@ int main(int argc, char **argv)
 			if (len < 5 || crc32((unsigned char *)&f, len) != 0) {
 				dbg_event("**** Receiver Error, Bad CRC Checksum\n");
 				if (no_nak)
-					send_frame(nak, 0, frame_expected, out_buf);
+					Send_Frame(nak, 0, frame_expected, out_buf);
 				break;
 			}
 					
 			if (f.kind == FRAME_ACK)
 				dbg_frame("Recv ACK  %d\n", f.ack);
 
-			if (f.kind == data)
+			if (f.kind == FRAME_DATA)
 			{
-				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq, f.ack, *(short *)f.data);
+				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq, f.ack, *(short *)(f.data.data));
 				// (R)an undamaged frame has arrived
 				if (f.seq != frame_expected && no_nak)
 				// (R)frame out of sequence
-					send_frame(nak, 0, frame_expected, out_buf);	// sen nak to stimulate retransmission
+					Send_Frame(nak, 0, frame_expected, out_buf);	// sen nak to stimulate retransmission
 					/*
 					NAKs IMPROVE PERFORMANCE:
 					If the NAK get lost, eventually the sender will time out for the very frame
 					and send it (and only it) of its own accord, but that may be quite a while later.
 					*/
 				else
-					start_ack_timer(1700);
+					start_ack_timer(ACK_TIMER);
+
 				if (between(frame_expected, f.seq, too_far) && (arrived[f.seq % NR_BUFS] == false))
 				{
 					// frames may be accepeted in any order
 					arrived[f.seq % NR_BUFS] = true;		// mark buffer as full
 					in_buf[f.seq % NR_BUFS] = f.data;		// insert data into buffer
+					
 					while (arrived[frame_expected % NR_BUFS] = true)
 					{
 						// pass frames and advance window
@@ -142,12 +166,13 @@ int main(int argc, char **argv)
 						arrived[frame_expected % NR_BUFS] = false;
 						inc(frame_expected);			// advance lower edge of reciever's window
 						inc(too_far);					// advance upper edge of reciever's window
-						start_ack_timer(1700);				// to see if separate ack is needed
+						start_ack_timer(ACK_TIMER);				// to see if separate ack is needed
 					}
 				}
 			}
+
 			if ((f.kind == FRAME_NAK) && between(ack_expected, (f.ack + 1) % (MAX_SEQ + 1), next_frame_to_send))
-				send_frame(data, (f.ack + 1) % (MAX_SEQ + 1), frame_expected, out_buf);
+				Send_Frame(data, (f.ack + 1) % (MAX_SEQ + 1), frame_expected, out_buf);
 
 			while (between(ack_expected, f.ack, next_frame_to_send))
 			{
@@ -159,18 +184,20 @@ int main(int argc, char **argv)
 
 		//case cksum_err:
 		//	if (no_nak)
-		//		send_frame(nak, 0, frame_expected, out_buf);	// damaged frame
+		//		Send_Frame(nak, 0, frame_expected, out_buf);	// damaged frame
 		//	break;
 
 		case DATA_TIMEOUT:
-			send_frame(data, oldest_fream, frame_expected, out_buf); // timed out
+			dbg_event("---- DATA %d timeout\n", arg);
+			Send_Frame(data, oldest_fream, frame_expected, out_buf); // timed out
 			break;
 
 		case ACK_TIMEOUT:
-			send_frame(ack, 0, frame_expected, out_buf);		// ack timer expired; send ack
-
+			Send_Frame(ack, 0, frame_expected, out_buf);		// ack timer expired; send ack
+			break;
 		}
-		if (nbuffered < NR_BUFS)
+
+		if (nbuffered < NR_BUFS && phl_ready)
 			enable_network_layer();
 		else
 			disable_network_layer();

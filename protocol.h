@@ -27,6 +27,10 @@ extern int wait_for_event(int *arg);
 #define DATA_TIMEOUT         3
 #define ACK_TIMEOUT          4
 
+/* Type defination */
+typedef enum { false, true } boolean;			// boolean type
+typedef unsigned char seq_nr;
+
 /* Network Layer functions */
 #define PKT_LEN 256
 
