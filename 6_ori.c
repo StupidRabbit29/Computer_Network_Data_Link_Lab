@@ -142,7 +142,7 @@ int main(int argc, char **argv)
 			if (f.kind == FRAME_ACK)
 				dbg_frame("Recv ACK  %d\n", f.ack);
 			if (f.kind==FRAME_NAK)
-				dbg_frame("Recv NCK  %d\n", f.ack);
+				dbg_frame("Recv NAK  %d\n", f.ack);
 
 			if (f.kind == FRAME_DATA)
 			{
