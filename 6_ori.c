@@ -163,7 +163,7 @@ int main(int argc, char **argv)
 					arrived[f.seq % NR_BUFS] = true;		// mark buffer as full
 					in_buf[f.seq % NR_BUFS] = f.data;		// insert data into buffer
 					
-					while (arrived[frame_expected % NR_BUFS] = true)
+					while (arrived[frame_expected % NR_BUFS] == true)
 					{
 						// pass frames and advance window
 						//to_network_layer(&in_buf[frame_expected % NR_BUFS]);
