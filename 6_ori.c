@@ -1,36 +1,39 @@
-﻿#include <stdio.h>
+﻿/*
+In this protocol, we have dropped the assumption that
+the network layer always has an infinite supply of packets to send.
+*/
+
+#include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
 #include "protocol.h"
 #include "datalink.h"
 
-#define MAX_SEQ 15				// should be 2^n-1
+#define MAX_SEQ 15			// should be 2^n-1
 #define NR_BUFS ((MAX_SEQ+1)/2)	// size of sliding window
 #define DATA_TIMER  1800
 #define ACK_TIMER 100
-/*
-In this protocol, we have dropped the assumption that
-the network layer always has an infinite supply of packets to send.
-*/
-//typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
 
-typedef enum { data = 1, ack = 2, nak = 3 } frame_kind;
+bool DEBUG = true;
 
 #define inc(k) if (k < MAX_SEQ) k = k + 1; else k = 0;
 
+//typedef enum { frame_arrival, cksum_err, timeout, network_layer_ready, ack_timeout }event_type;
+
+typedef enum { data = 1, ack = 2, nak = 3 } frame_kind;
 typedef struct { unsigned char data[PKT_LEN]; } packet;
-struct FRAME
+
+typedef struct FRAME
 {
 	unsigned char kind; /* FRAME_DATA */
 	unsigned char ack;
 	unsigned char seq;
 	packet data;
 	unsigned int  padding;
-};
-typedef struct FRAME frame;
+}frame;
 
 bool no_nak = true;			// no nak has been sent yet
-int oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator****
+//int oldest_fream = MAX_SEQ + 1;// initial value is only for the simulator****
 int phl_ready = 0;
 
 static bool between(seq_nr a, seq_nr b, seq_nr c)
@@ -59,7 +62,7 @@ static void Send_Frame(frame_kind fk, seq_nr frame_nr, seq_nr frame_expected, pa
 		s.ack = (seq_nr)((frame_expected + MAX_SEQ) % (MAX_SEQ + 1));
 		dbg_frame("Send DATA %d %d, ID %d\n", s.seq, s.ack, *(short*)(s.data.data));
 		put_frame((unsigned char*)& s, 3 + PKT_LEN);
-		start_timer(frame_nr % NR_BUFS, DATA_TIMER);
+		start_timer(frame_nr/* % NR_BUFS*/, DATA_TIMER);
 	}
 	if (fk == FRAME_NAK)			// one nak per frame
 	{
@@ -109,7 +112,7 @@ int main(int argc, char **argv)
 	int len = 0;
 
 	protocol_init(argc, argv);
-	lprintf("Designed by Jiang Yanjun, build: " __DATE__"  "__TIME__"\n");
+	lprintf("Designed by 223, build: " __DATE__"  "__TIME__"\n");
 
 	while (true)
 	{
@@ -119,6 +122,16 @@ int main(int argc, char **argv)
 		{
 			// When the network layer has a packet it wants to send, it can cayse a 'network_layer_ready' event to happen
 		case NETWORK_LAYER_READY:	// (S)accept, save, and transmit a new frame
+			if (DEBUG)
+			{
+				printf("*******************************************\n");
+				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+				printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+				for (int i = 0; i < NR_BUFS; i++)
+					printf("%d\t", arrived[i]);
+				printf("\n*******************************************\n");
+			}
+
 			nbuffered = nbuffered + 1;	// expand the window
 			get_packet(out_buf[next_frame_to_send % NR_BUFS].data);
 			Send_Frame(data, next_frame_to_send, frame_expected, out_buf);
@@ -141,9 +154,21 @@ int main(int argc, char **argv)
 					
 			if (f.kind == FRAME_ACK)
 				dbg_frame("Recv ACK  %d\n", f.ack);
+			if (f.kind==FRAME_NAK)
+				dbg_frame("Recv NAK  %d\n", f.ack);
 
 			if (f.kind == FRAME_DATA)
 			{
+				if (DEBUG)
+				{
+					printf("*******************************************\n");
+					printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+					printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+					for (int i = 0; i < NR_BUFS; i++)
+						printf("%d\t", arrived[i]);
+					printf("\n*******************************************\n");
+				}
+
 				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq, f.ack, *(short *)(f.data.data));
 				// (R)an undamaged frame has arrived
 				if (f.seq != frame_expected && no_nak)
@@ -186,6 +211,17 @@ int main(int argc, char **argv)
 				stop_timer(ack_expected % NR_BUFS);		// frame arrived intact
 				inc(ack_expected);						// advance lower edge of sender's window
 			}
+
+			if (DEBUG)
+			{
+				printf("*******************************************\n");
+				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+				printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+				for (int i = 0; i < NR_BUFS; i++)
+					printf("%d\t", arrived[i]);
+				printf("\n*******************************************\n");
+			}
+
 			break;
 
 		//case cksum_err:
@@ -194,11 +230,31 @@ int main(int argc, char **argv)
 		//	break;
 
 		case DATA_TIMEOUT:
+			if (DEBUG)
+			{
+				printf("*******************************************\n");
+				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+				printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+				for (int i = 0; i < NR_BUFS; i++)
+					printf("%d\t", arrived[i]);
+				printf("\n*******************************************\n");
+			}
+
 			dbg_event("---- DATA %d timeout\n", arg);
-			Send_Frame(data, oldest_fream, frame_expected, out_buf); // timed out
+			Send_Frame(data, arg, frame_expected, out_buf); // timed out
 			break;
 
 		case ACK_TIMEOUT:
+			if (DEBUG)
+			{
+				printf("*******************************************\n");
+				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+				printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+				for (int i = 0; i < NR_BUFS; i++)
+					printf("%d\t", arrived[i]);
+				printf("\n*******************************************\n");
+			}
+
 			Send_Frame(ack, 0, frame_expected, out_buf);		// ack timer expired; send ack
 			break;
 		}
@@ -209,3 +265,16 @@ int main(int argc, char **argv)
 			disable_network_layer();
 	}
 }
+
+/*void printstatus(void)
+{
+	if (DEBUG)
+	{
+		printf("*******************************************\n");
+		printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
+		printf("0/8\t1/9\t2/10\t3/11\t4/12\t5/13\t6/14\t7/15\n");
+		for (int i = 0; i < NR_BUFS; i++)
+			printf("%d\t", arrived[i]);
+		printf("\n*******************************************\n");
+	}
+}*/
