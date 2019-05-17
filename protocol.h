@@ -1,4 +1,4 @@
-#ifndef __PROTOCOL_fr12hn_H__
+﻿#ifndef __PROTOCOL_fr12hn_H__
 
 #ifdef  __cplusplus
 extern "C" {
@@ -26,6 +26,10 @@ extern int wait_for_event(int *arg);
 #define FRAME_RECEIVED       2
 #define DATA_TIMEOUT         3
 #define ACK_TIMEOUT          4
+
+/* Type defination */
+//typedef enum { false, true } boolean;			// boolean type
+typedef unsigned char seq_nr;
 
 /* Network Layer functions */
 #define PKT_LEN 256
