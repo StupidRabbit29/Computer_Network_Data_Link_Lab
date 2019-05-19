@@ -9,12 +9,12 @@ the network layer always has an infinite supply of packets to send.
 #include "protocol.h"
 #include "datalink.h"
 
-#define MAX_SEQ 15			// should be 2^n-1
+#define MAX_SEQ 31			// should be 2^n-1
 #define NR_BUFS ((MAX_SEQ+1)/2)	// size of sliding window
-#define DATA_TIMER  1800
-#define ACK_TIMER 100
+#define DATA_TIMER  5000
+#define ACK_TIMER 280
 
-bool DEBUG = true;
+bool DEBUG = false;
 
 #define inc(k) if (k < MAX_SEQ) k = k + 1; else k = 0;
 
@@ -29,7 +29,7 @@ typedef struct FRAME
 	unsigned char ack;
 	unsigned char seq;
 	packet data;
-	unsigned int  padding;
+	unsigned int  padding;//padding字段用来存放crc校验位
 }frame;
 
 bool no_nak = true;			// no nak has been sent yet
@@ -44,7 +44,7 @@ static bool between(seq_nr a, seq_nr b, seq_nr c)
 
 static void put_frame(unsigned char *frame, int len)
 {
-	*(unsigned int *)(frame + len) = crc32(frame, len);
+	*(unsigned int *)(frame + len) = crc32(frame, len);//将crc函数计算得到的结果（4字节int）存放在padding字段
 	send_frame(frame, len + 4);
 	phl_ready = 0;
 }
@@ -145,7 +145,9 @@ int main(int argc, char **argv)
 		case FRAME_RECEIVED:			// (R)a data or control frame has arrived
 			len = recv_frame((unsigned char *)&f, sizeof(f));
 			//from_physical_layer(&r);// (R)fetch incoming frame from physical layer
-			if (len < 5 || crc32((unsigned char *)&f, len) != 0) {
+			if (len < 5 || crc32((unsigned char *)&f, len) != 0) 
+				//计算整个帧的crc，含padding字段，故crc校验结果理应为0
+			{
 				dbg_event("**** Receiver Error, Bad CRC Checksum\n");
 				if (no_nak)
 					Send_Frame(nak, 0, frame_expected, out_buf);
@@ -208,7 +210,7 @@ int main(int argc, char **argv)
 			while (between(ack_expected, f.ack, next_frame_to_send))
 			{
 				nbuffered = nbuffered - 1;				// handle piggybacked ack
-				stop_timer(ack_expected % NR_BUFS);		// frame arrived intact
+				stop_timer(ack_expected/* % NR_BUFS*/);		// frame arrived intact
 				inc(ack_expected);						// advance lower edge of sender's window
 			}
 
