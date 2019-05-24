@@ -9,10 +9,10 @@ the network layer always has an infinite supply of packets to send.
 #include "protocol.h"
 #include "datalink.h"
 
-#define MAX_SEQ 31			// should be 2^n-1
+#define MAX_SEQ 15			// should be 2^n-1
 #define NR_BUFS ((MAX_SEQ+1)/2)	// size of sliding window
 #define DATA_TIMER  5000
-#define ACK_TIMER 280
+#define ACK_TIMER 350
 
 bool DEBUG = false;
 
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 		{
 			// When the network layer has a packet it wants to send, it can cayse a 'network_layer_ready' event to happen
 		case NETWORK_LAYER_READY:	// (S)accept, save, and transmit a new frame
-			if (DEBUG)
+			/*if (DEBUG)
 			{
 				printf("*******************************************\n");
 				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
 				for (int i = 0; i < NR_BUFS; i++)
 					printf("%d\t", arrived[i]);
 				printf("\n*******************************************\n");
-			}
+			}*/
 
 			nbuffered = nbuffered + 1;	// expand the window
 			get_packet(out_buf[next_frame_to_send % NR_BUFS].data);
@@ -161,7 +161,7 @@ int main(int argc, char **argv)
 
 			if (f.kind == FRAME_DATA)
 			{
-				if (DEBUG)
+				/*if (DEBUG)
 				{
 					printf("*******************************************\n");
 					printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
 					for (int i = 0; i < NR_BUFS; i++)
 						printf("%d\t", arrived[i]);
 					printf("\n*******************************************\n");
-				}
+				}*/
 
 				dbg_frame("Recv DATA %d %d, ID %d\n", f.seq, f.ack, *(short *)(f.data.data));
 				// (R)an undamaged frame has arrived
@@ -214,7 +214,7 @@ int main(int argc, char **argv)
 				inc(ack_expected);						// advance lower edge of sender's window
 			}
 
-			if (DEBUG)
+			/*if (DEBUG)
 			{
 				printf("*******************************************\n");
 				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 				for (int i = 0; i < NR_BUFS; i++)
 					printf("%d\t", arrived[i]);
 				printf("\n*******************************************\n");
-			}
+			}*/
 
 			break;
 
@@ -232,7 +232,7 @@ int main(int argc, char **argv)
 		//	break;
 
 		case DATA_TIMEOUT:
-			if (DEBUG)
+			/*if (DEBUG)
 			{
 				printf("*******************************************\n");
 				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
@@ -240,14 +240,14 @@ int main(int argc, char **argv)
 				for (int i = 0; i < NR_BUFS; i++)
 					printf("%d\t", arrived[i]);
 				printf("\n*******************************************\n");
-			}
+			}*/
 
 			dbg_event("---- DATA %d timeout\n", arg);
 			Send_Frame(data, arg, frame_expected, out_buf); // timed out
 			break;
 
 		case ACK_TIMEOUT:
-			if (DEBUG)
+			/*if (DEBUG)
 			{
 				printf("*******************************************\n");
 				printf("ack_ep:%d  next_f_send:%d  frame_ep:%d  too_far:%d  nbuffered:%d\n", ack_expected, next_frame_to_send, frame_expected, too_far, nbuffered);
@@ -255,7 +255,7 @@ int main(int argc, char **argv)
 				for (int i = 0; i < NR_BUFS; i++)
 					printf("%d\t", arrived[i]);
 				printf("\n*******************************************\n");
-			}
+			}*/
 
 			Send_Frame(ack, 0, frame_expected, out_buf);		// ack timer expired; send ack
 			break;
